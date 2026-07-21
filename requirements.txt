@@ -1,0 +1,10 @@
+# data generation (pipeline/)
+openai>=1.0
+python-dotenv>=1.0
+
+# training / evaluation (see training/run_lora.sh for the LLaMA-Factory install)
+# llamafactory[torch,metrics]
+# transformers>=4.57
+# qwen-vl-utils
+# accelerate
+# peft

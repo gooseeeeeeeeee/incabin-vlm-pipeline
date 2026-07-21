@@ -1,0 +1,21 @@
+# Secrets — never commit
+.env
+*.key
+
+# Data, generated outputs, model weights (not redistributed)
+0-datasets/
+1-gt_facts/
+2-generation/
+3-splits/
+*.jsonl
+*.pt
+*.safetensors
+results_*.jsonl
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# OS
+.DS_Store

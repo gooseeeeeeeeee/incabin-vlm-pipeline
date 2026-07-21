@@ -1,0 +1,47 @@
+### LLaMA-Factory LoRA config — v2: SVIRO occupancy + DriveAct activity (joint in-cabin)
+### run: llamafactory-cli train 4-training/sviro_driveact_lora_v2.yaml
+
+### model
+model_name_or_path: Qwen/Qwen3-VL-8B-Instruct
+trust_remote_code: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 8
+lora_alpha: 16
+lora_dropout: 0.05
+lora_target: all
+freeze_vision_tower: true
+
+### dataset — both in-cabin sources, concatenated (register both in dataset_info.json)
+dataset: sviro_incabin,driveact_incabin
+dataset_dir: /root/autodl-tmp/.autodl/Incabin/2-generation/sharegpt
+template: qwen3_vl
+cutoff_len: 2048
+overwrite_cache: true
+preprocessing_num_workers: 8
+dataloader_num_workers: 4
+image_max_pixels: 262144
+image_min_pixels: 3136
+
+### output
+output_dir: /root/autodl-tmp/.autodl/Incabin/4-training/sviro_driveact_lora_v2
+logging_steps: 10
+save_steps: 300
+save_total_limit: 3
+plot_loss: true
+overwrite_output_dir: true
+report_to: none
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-4
+num_train_epochs: 2.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+gradient_checkpointing: true
+ddp_timeout: 180000000
