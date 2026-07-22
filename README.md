@@ -41,6 +41,8 @@ docs/         method, coverage analysis, results summary
 | `export_sharegpt_pilot.py` | Minimal pilot ShareGPT exporter |
 | `build_splits.py` | Deterministic train / val_dev / frozen_test splits (frozen never trained) |
 
+**Prompts are parameters.** All generation/cross-check prompts live in [`pipeline/prompts/*.yaml`](pipeline/prompts) (`sviro.yaml`, `driveact.yaml`) and are loaded by [`pipeline/prompts.py`](pipeline/prompts.py). Edit a prompt in its YAML — no code change, clean and independent per stage.
+
 ### `training/`
 
 `run_lora.sh` installs LLaMA-Factory, builds the train-only ShareGPT and launches training.
@@ -123,4 +125,5 @@ Drive&Act capability not yet benchmarked).
 
 - Generation uses an OpenAI-compatible endpoint; generation and cross-check must be **non-thinking** models
   (reasoning models emit chain-of-thought instead of JSON and break parsing).
+- Prompts are externalised to `pipeline/prompts/*.yaml` (edit there, not in code).
 - Long runs are resumable (`--resume`) and stream to disk, so an interrupted job never loses completed work.
