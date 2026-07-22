@@ -11,16 +11,23 @@ dataset cannot confirm (seatbelt state, child-seat orientation, ISOFIX, sleep) i
 *candidate for review* or explicitly **refused** — never guessed. This matters because the target use cases
 are safety-critical.
 
+The repo hosts **two GT-grounded data lines** that share this principle:
+- **In-cabin** (primary) — SVIRO / Drive&Act occupant & activity understanding.
+- **Exterior / nuScene** (Task 2) — out-of-vehicle recaptioning + finetune, objectively evaluated on
+  held-out driving datasets. Files live under `*/exterior/`. See [`docs/exterior_finetune_results.md`](docs/exterior_finetune_results.md).
+
 ---
 
 ## Repository layout
 
 ```
-pipeline/     data construction: GT facts → grounded caption/QA generation → QC → ShareGPT
-training/     LoRA fine-tuning configs and launcher (LLaMA-Factory)
-evaluation/   frozen-test benchmark construction, inference + scoring, error spot-check
-docs/         method, coverage analysis, results summary
-.env.example  API configuration template (never commit a real .env)
+pipeline/            in-cabin data construction: GT facts → grounded QA → QC → ShareGPT
+pipeline/exterior/   exterior data-gen: sharegpt flatten, JAAD crossing, YOLO presence/count QA
+training/            LoRA configs+launcher (in-cabin, LLaMA-Factory) + train_lora_qwen3vl.py (exterior)
+evaluation/          in-cabin frozen-test benchmark + scoring
+evaluation/exterior/ exterior objective eval (YOLO-GT in-domain nuScenes + cross-dataset nuImages)
+docs/                method, coverage, results (both lines)
+.env.example         API configuration template (never commit a real .env)
 ```
 
 ### `pipeline/`
@@ -118,6 +125,8 @@ Drive&Act capability not yet benchmarked).
 - [`docs/exterior_to_incabin_migration_plan.md`](docs/exterior_to_incabin_migration_plan.md) — method design and reuse decisions
 - [`docs/target_spec_coverage.md`](docs/target_spec_coverage.md) — 13 target use cases vs current data coverage
 - [`docs/gap_datasets_public_sources.md`](docs/gap_datasets_public_sources.md) — candidate datasets for uncovered use cases
+- [`docs/exterior_finetune_results.md`](docs/exterior_finetune_results.md) — **exterior/nuScene line**: ablation + v26 results (+10.2 in-domain / +4.2 cross-dataset)
+- [`docs/exterior_dataset.md`](docs/exterior_dataset.md) — exterior dataset manifest (sources / GT / held-out / leakage audit)
 
 ## Notes
 
