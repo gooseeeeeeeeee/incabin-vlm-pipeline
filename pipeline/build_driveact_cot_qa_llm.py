@@ -16,12 +16,18 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import build_sviro_cot_qa_llm as S  # reuse parse_json, call_retry, _norm_caps, llm_client
+import prompts  # prompt params loaded from prompts/*.yaml
 
 ROOT = S.ROOT
 GT = os.path.join(ROOT, "1-gt_facts", "driveact", "driveact_a_column_co_driver_rgb_gt_facts.jsonl")
 GT_REF = "1-gt_facts/driveact/driveact_a_column_co_driver_rgb_gt_facts.jsonl"
 OUT = os.path.join(ROOT, "2-generation", "raw_outputs", "driveact_full_raw.jsonl")
-PROMPT_VERSION = "driveact_v1"
+_P = prompts.load("driveact")
+PROMPT_VERSION = _P["version"]
+GEN_SYSTEM     = _P["gen_system"]
+GEN_USER       = _P["gen_user"]
+CHECK_SYSTEM   = _P["check_system"]
+CHECK_USER     = _P["check_user"]
 
 SUPPORT = {"general_activity": "gt_supported", "seat_belt": "gt_supported",
            "door_status": "gt_supported", "out_of_position_candidate": "candidate"}
@@ -32,49 +38,8 @@ FORBIDDEN = re.compile(r"\b(gender|male|female|man|woman|age|years old|caucasian
 SAFE_NEG = re.compile(r"candidate|cannot|not confirm|needs? review|manual|vlm review|not provided|"
                       r"unable|is not|does not|not shown", re.I)
 
-GEN_SYSTEM = """You are an in-cabin DRIVER-MONITORING annotator producing GROUNDED training data from the Drive&Act dataset.
-ACTIVITY FACTS are the ONLY source of truth for what the person is doing.
 
-Absolute rules:
-1. Use ONLY the ACTIVITY FACTS: the coarse activity (midlevel.activity) and, if present, the fine-grained
-   object interaction (objectlevel: activity + object + location). Do not invent other actions or objects.
-2. NEVER claim personal identity, age, gender, emotion, ethnicity/appearance, or the number of other passengers,
-   nor any activity not in ACTIVITY FACTS. If asked, refuse.
-3. Single co-driver view — do NOT describe other seats' occupancy or count people.
-4. suited_case "out_of_position_candidate" is a CANDIDATE only: phrase any out-of-position note as a candidate
-   needing review, never a confirmed unsafe state.
-5. If a fact is not in ACTIVITY FACTS, it is "not provided by GT". Never guess.
-6. Caption: think State/Scene (what the person is doing: coarse + fine object/location) -> Risk (distraction or
-   safety implication grounded in the activity, e.g. attention/hands away from driving) -> Decision (conservative
-   monitoring action: flag distraction / remind / no action if compliant). Emit caption_prose as label-free prose.
-7. EXACTLY 5 QA in this order: (1) Recognition — the coarse activity; (2) Recognition — the fine-grained object
-   interaction (object + location) if objectlevel present, else another activity-recognition question;
-   (3) Reasoning — the monitoring risk/implication grounded in the activity; (4) Decision — conservative action;
-   (5) Reject — refuse an unsupported fact (identity/age/emotion/how-many-passengers).
-   Each QA: question, answer, reason, capability (Recognition|Reasoning|Decision|Reject), use_case, gt_evidence
-   (dotted refs, e.g. activity_facts.midlevel.activity=..., activity_facts.objectlevel.object=...).
-8. use_case = the row's suited_case (general_activity | seat_belt | door_status | out_of_position_candidate),
-   or "unsupported_reject" for the Reject item.
-Output ONE strict JSON object, no prose outside JSON."""
 
-GEN_USER = """ACTIVITY FACTS (authoritative JSON):
-{gt}
-
-suited_case: {sc} (support_level: {lvl})
-
-Return ONE JSON object exactly:
-{{"caption":{{"state_scene":"","risk":"","decision":""}},
-  "caption_prose":"",
-  "qa":[{{"question":"","answer":"","reason":"","capability":"","use_case":"","gt_evidence":[""]}}],
-  "limitations_used":[""]}}"""
-
-CHECK_SYSTEM = """You are a STRICT, INDEPENDENT fact-checker for driver-activity annotations.
-Given ACTIVITY_FACTS and a DRAFT, return a corrected copy with the SAME JSON schema.
-STRUCTURE: keep EVERY qa item (same count, order, capability, use_case); never delete/add/reorder; keep the Reject.
-Correct only the TEXT that: contradicts the coarse/fine activity, object, or location; claims identity/age/gender/
-emotion/appearance or counts other passengers; or states out_of_position as confirmed (must read as candidate).
-Keep every gt_evidence. Output only the corrected JSON object."""
-CHECK_USER = "Return corrected JSON with the same schema."
 
 
 def load():

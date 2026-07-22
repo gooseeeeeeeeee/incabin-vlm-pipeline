@@ -23,12 +23,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import llm_client  # noqa: E402
+import prompts  # noqa: E402  — prompt params from prompts/*.yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GT = os.path.join(ROOT, "1-gt_facts", "sviro_bmw_x5_random_train_gt_facts.jsonl")
 GT_REF = "1-gt_facts/sviro_bmw_x5_random_train_gt_facts.jsonl"
 OUT = os.path.join(ROOT, "2-generation", "raw_outputs", "sviro_pilot_llm_raw.jsonl")
-PROMPT_VERSION = "v1_llm_pilot"
+_P = prompts.load("sviro")
+PROMPT_VERSION = _P["version"]
+USE_CASE_HELP  = _P["use_case_help"]
+GEN_SYSTEM     = _P["gen_system"]
+GEN_USER_TMPL  = _P["gen_user"]
+CHECK_SYSTEM   = _P["check_system"]
+CHECK_USER     = _P["check_user"]
 
 HARD_FORBIDDEN = ["seatbelt", "seat belt", "belt", "pet", "dog", "cat", "door open", "door closed",
                   "asleep", "sleeping", "unconscious", "age ", "gender", "male", "female", "emotion"]
@@ -48,80 +55,10 @@ CANDIDATE_IDS = {"03_child_in_forward_facing_child_seat_candidates",
                  "11_out_of_position_candidates"}
 
 # ---- allowed use_case vocabulary given to the model (P1/P4) ----
-USE_CASE_HELP = """Allowed use_case values:
-  gt_supported occupancy/objects: 01_empty_seat, 02_adult_occupant, 05_infant_recognition,
-      12_left_objects, child_occupant_present  (child presence IS a supported fact even though
-      child-seat ORIENTATION is not — never route child presence to 03/04/06).
-  candidate (phrase as candidate / needs review only): 03_child_in_forward_facing_child_seat_candidates,
-      04_rear_facing_child_seat_candidates, 06_isofix_child_seat_orientation_candidates,
-      11_out_of_position_candidates.
-  reject of unsupported (use for Reject items about facts GT lacks): 07_pet, 08_seatbelt,
-      10_sleeping, 13_door."""
 
-GEN_SYSTEM = f"""You are an in-cabin (vehicle rear-seat) annotator producing GROUNDED training data from SVIRO GT Facts.
-The GT FACTS are the ONLY source of truth for occupancy, counts, object classes, positions, keypoints, pose_flags, suited_cases.
 
-Absolute rules:
-1. Never add, remove, or change any occupant, seat, or object beyond GT FACTS.
-2. NEVER claim: seatbelt worn/not, pet, door status, sleeping/unconsciousness, ISOFIX tension/latch,
-   confirmed forward/rear-facing orientation, age, gender, emotion, identity. If asked, refuse.
-3. suited_cases with support_level "candidate" (03/04/06/11) -> describe ONLY as candidates needing manual/VLM review.
-4. pose_flags are image-coordinate GEOMETRY facts, not diagnoses. Never turn them into sleeping/falling/danger;
-   they may only support an out-of-position CANDIDATE note.
-5. If GT lacks a fact, it is "not provided by GT". Never guess.
-6. Caption: think internally as state_scene / risk / decision (+ optional attention), risk grounded in GT,
-   decision conservative (keep monitoring / verify before driving / manual review needed / no action needed).
-   Also emit caption_prose: the SAME content as flowing, label-free prose (this is what trains).
-7. Each QA item carries question, answer, reason (short grounding note), capability
-   (Recognition|Reasoning|Decision|Reject), use_case, gt_evidence (dotted refs into GT FACTS).
-8. Produce EXACTLY 5 QA items, in THIS order and capability, none omitted:
-     (1) capability="Recognition"  — occupancy/object read-out;
-     (2) capability="Reasoning"    — GT-grounded risk explanation (NEVER skip this one);
-     (3) capability="Decision"     — conservative action;
-     (4) capability="Reject"       — refuse an unsupported fact (see below); ALWAYS include exactly one;
-     (5) capability="Recognition" OR "Reasoning" — a second, DIFFERENT question (vary wording, no repeats).
-   The Reject: ask about an occupant-related unsupported fact (e.g. seatbelt) ONLY when an occupant exists;
-   otherwise reject a non-occupant unsupported fact (e.g. door status).
-9. Child-seat ORIENTATION, ISOFIX, and out-of-position are NOT GT-supported. Route any such question into
-   the Reject item, phrased "cannot determine ... candidate for manual/VLM review". Do NOT write the words
-   forward-facing / rear-facing / ISOFIX in Recognition/Reasoning/Decision items — those must stay on
-   GT-supported facts (occupancy, presence, objects, posture-geometry).
-10. QA style (grounded + diverse, from the exterior pipeline): every question must be answerable ONLY by
-   looking at THIS cabin (multimodal), not by a text model alone; never write "in the image"/"in the picture";
-   vary question form across Why / What / Where / Which / How-many / Is-Can; keep each answer concise and its
-   `reason` short.
-{USE_CASE_HELP}
-Output ONE strict JSON object, no prose outside JSON."""
 
-GEN_USER_TMPL = """GT FACTS (authoritative JSON):
-{gt}
 
-ELIGIBLE suited_cases (only these use cases may be asked; candidate ones must read as candidates):
-{cases}
-
-Return ONE JSON object exactly:
-{{"caption":{{"state_scene":"","risk":"","decision":"","attention":""}},
-  "caption_prose":"",
-  "qa":[{{"question":"","answer":"","reason":"","capability":"","use_case":"","gt_evidence":[""]}}],
-  "limitations_used":[""]}}"""
-
-CHECK_SYSTEM = """You are a STRICT, INDEPENDENT fact-checker for in-cabin annotations.
-Given GT_FACTS and a DRAFT, return a corrected copy with the SAME JSON schema.
-
-CRITICAL STRUCTURE RULES (do not violate):
-- Keep EVERY qa item: identical count, same order, same `capability` and `use_case`.
-- NEVER delete, merge, reorder, or add qa items. The Reject item MUST be preserved.
-- Only edit the TEXT (question/answer/reason) of an item that is factually wrong or forbidden.
-
-Correction rules (text only):
-- fix any claim contradicting GT seat_states / object_counts / classes;
-- remove forbidden claims (seatbelt, pet, door, sleeping, age, gender, emotion, identity,
-  confirmed orientation, ISOFIX tension);
-- rewrite any candidate case (03/04/06/11) stated as a confirmed label into candidate/needs-review phrasing;
-- keep every gt_evidence.
-Output only the corrected JSON object."""
-
-CHECK_USER = "Return corrected JSON with the same schema (caption, caption_prose, qa, limitations_used)."
 
 
 def load_rows():
